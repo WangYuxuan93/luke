@@ -1,3 +1,6 @@
+import sys
+sys.path.append('.')
+
 import logging
 import multiprocessing
 import os
@@ -24,6 +27,8 @@ import luke.utils.entity_vocab
 import luke.utils.interwiki_db
 import luke.utils.model_utils
 import luke.utils.convert_luke_to_huggingface_model
+
+import luke.utils.filter_wikidata
 
 
 @click.group()
@@ -64,6 +69,8 @@ cli.add_command(luke.utils.entity_vocab.build_multilingual_entity_vocab)
 cli.add_command(luke.utils.model_utils.create_model_archive)
 cli.add_command(luke.utils.convert_luke_to_huggingface_model.convert_luke_to_huggingface_model)
 
+cli.add_command(luke.utils.filter_wikidata.filter_wikidata_with_entity_vocab)
+cli.add_command(luke.utils.filter_wikidata.align_entity_vocab_with_wikidata_id)
 
 if __name__ == "__main__":
     cli()
