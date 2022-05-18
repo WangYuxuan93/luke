@@ -29,7 +29,7 @@ import luke.utils.model_utils
 import luke.utils.convert_luke_to_huggingface_model
 
 import luke.utils.filter_wikidata
-
+import luke.pretraining.meae_dataset
 
 @click.group()
 @click.option("--verbose", is_flag=True)
@@ -71,6 +71,7 @@ cli.add_command(luke.utils.convert_luke_to_huggingface_model.convert_luke_to_hug
 
 cli.add_command(luke.utils.filter_wikidata.filter_wikidata_with_entity_vocab)
 cli.add_command(luke.utils.filter_wikidata.align_entity_vocab_with_wikidata_id)
+cli.add_command(luke.pretraining.meae_dataset.build_wikipedia_pretraining_dataset_for_meae)
 
 if __name__ == "__main__":
     cli()

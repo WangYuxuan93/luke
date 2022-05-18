@@ -10,6 +10,7 @@ from multiprocessing.pool import Pool
 from typing import Optional
 
 import click
+import numpy as np
 import tensorflow as tf
 import transformers
 from tensorflow.io import TFRecordWriter
@@ -357,14 +358,35 @@ class WikipediaPretrainingDataset:
                             for _, start, end in links
                         ]
                     )
+                    entity_labels = np.zeros_like(word_ids)
+                    mention_boundaries = np.zeros_like(word_ids)
+                    for id_, start, end in links:
+                        entity_labels[start] = id_
+                        mention_boundaries[start] = 1
+                        for tok_id in range(start+1, end):
+                            mention_boundaries[tok_id] = 2
+                    
+                    if False:
+                        print ("words:\n", words)
+                        print ("word_ids:\n", word_ids)
+                        print ("entity_labels:\n", entity_labels)
+                        print ("mention_boundaries:\n", mention_boundaries)
+                        print ("entity_ids:\n", entity_ids)
+                        print ("links:\n", links)
+                        print ("entity_position_ids:\n", list(entity_position_ids))
+                        for id in entity_ids:
+                            print ("entity_id={}, title={}".format(id, _entity_vocab.get_title_by_id(id, _language))) 
+                        exit()
 
                     example = tf.train.Example(
                         features=tf.train.Features(
                             feature=dict(
                                 page_id=tf.train.Feature(int64_list=tf.train.Int64List(value=[page_id])),
                                 word_ids=tf.train.Feature(int64_list=tf.train.Int64List(value=word_ids)),
-                                entity_ids=tf.train.Feature(int64_list=tf.train.Int64List(value=entity_ids)),
-                                entity_position_ids=tf.train.Feature(int64_list=Int64List(value=entity_position_ids)),
+                                entity_labels=tf.train.Feature(int64_list=tf.train.Int64List(value=entity_labels)),
+                                mention_boundaries=tf.train.Feature(int64_list=tf.train.Int64List(value=mention_boundaries)),
+                                #entity_ids=tf.train.Feature(int64_list=tf.train.Int64List(value=entity_ids)),
+                                #entity_position_ids=tf.train.Feature(int64_list=Int64List(value=entity_position_ids)),
                             )
                         )
                     )
