@@ -12,6 +12,8 @@ from typing import Optional
 import click
 import numpy as np
 import tensorflow as tf
+from sentencepiece import SentencePieceProcessor
+from fairseq.data.dictionary import Dictionary
 import transformers
 from tensorflow.io import TFRecordWriter
 from tensorflow.train import Int64List
@@ -46,9 +48,10 @@ _abstract_only = _language = None
 
 @click.command()
 @click.argument("dump_db_file", type=click.Path(exists=True))
-@click.argument("tokenizer_name")
+@click.argument("model_path")
 @click.argument("entity_vocab_file", type=click.Path(exists=True))
 @click.argument("output_dir", type=click.Path(file_okay=False))
+@click.option("--examples-per-file", default=1000)
 @click.option("--sentence-splitter", default="en")
 @click.option("--max-seq-length", default=512)
 @click.option("--max-entity-length", default=128)
@@ -62,17 +65,21 @@ _abstract_only = _language = None
 @click.option("--max-num-documents", default=None, type=int)
 @click.option("--predefined-entities-only", is_flag=True)
 def build_wikipedia_pretraining_dataset_for_meae(
-    dump_db_file: str, tokenizer_name: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, **kwargs
+        dump_db_file: str, model_path: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, examples_per_file: int, **kwargs
 ):
     dump_db = DumpDB(dump_db_file)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
+    tokenizer_path = os.path.join(model_path, "sentencepiece.bpe.model")
+    dict_path = os.path.join(model_path, "dict.txt")
+    #tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
+    tokenizer = SentencePieceProcessor(model_file=tokenizer_path)
+    dictionary = Dictionary.load(dict_path)
     sentence_splitter = SentenceSplitter.from_name(sentence_splitter)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     entity_vocab = EntityVocab(entity_vocab_file)
-    WikipediaPretrainingDataset.build(dump_db, tokenizer, sentence_splitter, entity_vocab, output_dir, **kwargs)
+    WikipediaPretrainingDataset.build(dump_db, tokenizer, dictionary, sentence_splitter, entity_vocab, output_dir, examples_per_file=examples_per_file, **kwargs)
 
 
 class WikipediaPretrainingDataset:
@@ -165,10 +172,12 @@ class WikipediaPretrainingDataset:
     def build(
         cls,
         dump_db: DumpDB,
-        tokenizer: PreTrainedTokenizer,
+        tokenizer: SentencePieceProcessor,
+        dictionary: Dictionary,
         sentence_splitter: SentenceSplitter,
         entity_vocab: EntityVocab,
         output_dir: str,
+        examples_per_file: int,
         max_seq_length: int,
         max_entity_length: int,
         max_mention_length: int,
@@ -199,37 +208,50 @@ class WikipediaPretrainingDataset:
 
         max_num_tokens = max_seq_length - 2  # 2 for [CLS] and [SEP]
 
-        tokenizer.save_pretrained(output_dir)
+        #tokenizer.save_pretrained(output_dir)
 
-        entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
+        #entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
         number_of_items = 0
-        tf_file = os.path.join(output_dir, DATASET_FILE)
+
         options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
-        with TFRecordWriter(tf_file, options=options) as writer:
-            with tqdm(total=len(target_titles)) as pbar:
-                initargs = (
-                    dump_db,
-                    tokenizer,
-                    sentence_splitter,
-                    entity_vocab,
-                    max_num_tokens,
-                    max_entity_length,
-                    max_mention_length,
-                    min_sentence_length,
-                    abstract_only,
-                    include_sentences_without_entities,
-                    include_unk_entities,
-                )
-                with closing(
-                    Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
-                ) as pool:
-                    for ret in pool.imap(
-                        WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
-                    ):
-                        for data in ret:
-                            writer.write(data)
-                            number_of_items += 1
-                        pbar.update()
+        file_id = 0
+        tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
+        writer = TFRecordWriter(tf_file, options=options)
+        
+        with tqdm(total=len(target_titles)) as pbar:
+            initargs = (
+                dump_db,
+                tokenizer,
+                dictionary,
+                sentence_splitter,
+                entity_vocab,
+                max_num_tokens,
+                max_entity_length,
+                max_mention_length,
+                min_sentence_length,
+                abstract_only,
+                include_sentences_without_entities,
+                include_unk_entities,
+            )
+            with closing(
+                Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
+            ) as pool:
+                for ret in pool.imap(
+                    WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
+                ):
+                    for data in ret:
+                        writer.write(data)
+                        number_of_items += 1
+
+                        if number_of_items % examples_per_file == 0:
+                            writer.close()
+                            file_id += 1
+                            tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
+                            writer = TFRecordWriter(tf_file, options=options)
+
+                    pbar.update()
+
+
 
         with open(os.path.join(output_dir, METADATA_FILE), "w") as metadata_file:
             json.dump(
@@ -249,7 +271,8 @@ class WikipediaPretrainingDataset:
     @staticmethod
     def _initialize_worker(
         dump_db: DumpDB,
-        tokenizer: PreTrainedTokenizer,
+        tokenizer: SentencePieceProcessor,
+        dictionary: Dictionary,
         sentence_splitter: SentenceSplitter,
         entity_vocab: EntityVocab,
         max_num_tokens: int,
@@ -260,13 +283,14 @@ class WikipediaPretrainingDataset:
         include_sentences_without_entities: bool,
         include_unk_entities: bool,
     ):
-        global _dump_db, _tokenizer, _sentence_splitter, _entity_vocab, _max_num_tokens, _max_entity_length
+        global _dump_db, _tokenizer, _dictionary, _sentence_splitter, _entity_vocab, _max_num_tokens, _max_entity_length
         global _max_mention_length, _min_sentence_length, _include_sentences_without_entities, _include_unk_entities
         global _abstract_only
         global _language
 
         _dump_db = dump_db
         _tokenizer = tokenizer
+        _dictionary = dictionary
         _sentence_splitter = sentence_splitter
         _entity_vocab = entity_vocab
         _max_num_tokens = max_num_tokens
