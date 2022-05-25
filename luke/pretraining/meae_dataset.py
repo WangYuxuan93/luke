@@ -241,7 +241,7 @@ class WikipediaPretrainingDataset:
                 with closing(
                     Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
                 ) as pool:
-                    for item in pool.imap(
+                    for item in pool.imap_unordered(
                         WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
                     ):
                         ret, n_total_entity, n_ignored, seq_lens = item
