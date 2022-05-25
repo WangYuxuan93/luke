@@ -378,7 +378,8 @@ class WikipediaPretrainingDataset:
             if i == len(sentences) - 1 or len(words) + len(sentences[i + 1][0]) > _max_num_tokens:
                 if links or _include_sentences_without_entities:
                     links = links[:_max_entity_length]
-                    word_ids = _tokenizer.convert_tokens_to_ids(words)
+                    #word_ids = _tokenizer.convert_tokens_to_ids(words)
+                    word_ids = word_to_idx(_dictionary, words)
                     assert _min_sentence_length <= len(word_ids) <= _max_num_tokens
                     entity_ids = [id_ for id_, _, _, in links]
                     assert len(entity_ids) <= _max_entity_length
@@ -396,7 +397,7 @@ class WikipediaPretrainingDataset:
                         for tok_id in range(start+1, end):
                             mention_boundaries[tok_id] = 2
                     
-                    if False:
+                    if True:
                         print ("words:\n", words)
                         print ("word_ids:\n", word_ids)
                         print ("entity_labels:\n", entity_labels)
@@ -426,7 +427,13 @@ class WikipediaPretrainingDataset:
                 links = []
         return ret
 
-
+# this is a chinese character that will produce ['_', '龘', ...] after tokenized
+# when added before the original text
+# mainly works for languages like Chinese to remove the '_' for in-text words
+# since roberta treats words at beginning and in-text words differently
+# the first word is automatically treated as beginning word
+# but here we have to tokenize in-text mention word for entity separately from 
+# normal text. And this helps to change them back to in-text words
 XLM_ROBERTA_UNK_CHAR = "龘"
 
 
@@ -436,18 +443,10 @@ def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
     if not text:
         return []
     try:
-        #text = text.encode("utf-8",errors="surrogateescape").decode("utf-8")
-    
-        if isinstance(tokenizer, RobertaTokenizer):
-            return tokenizer.tokenize(text, add_prefix_space=add_prefix_space)
-        elif isinstance(tokenizer, XLMRobertaTokenizer):
-            if add_prefix_space:
-                return tokenizer.tokenize(text)
-            else:
-                # Append UNK_CHAR, and remove this below to avoid unnecessary whitespace.
-                return tokenizer.tokenize(XLM_ROBERTA_UNK_CHAR + text)[2:]
+        if add_prefix_space:
+            return tokenizer.encode(text, out_type=str)
         else:
-            return tokenizer.tokenize(text)
+            return tokenizer.encode(XLM_ROBERTA_UNK_CHAR + text, out_type=str)[2:]
     except TypeError:
         print ("text:\n", text.encode("utf-8").decode("utf-8"))
         logger.info("Error occured during tokenization. Skip.")
@@ -468,3 +467,10 @@ def tokenize_segments(
             )
 
     return tokenized_segments
+
+def word_to_idx(dictionary, words):
+    ids = []
+    for i, word in enumerate(words):
+        idx = dictionary.index(word)
+        ids.append(idx)
+    return ids
