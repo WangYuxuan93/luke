@@ -19,7 +19,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizer
 from wikipedia2vec.dump_db import DumpDB
 
-from luke.pretraining.tokenization import tokenize, tokenize_segments
+#from luke.pretraining.tokenization import tokenize, tokenize_segments
 from luke.utils.entity_vocab import UNK_TOKEN, EntityVocab
 from luke.utils.model_utils import (
     ENTITY_VOCAB_FILE,
@@ -27,6 +27,12 @@ from luke.utils.model_utils import (
     get_entity_vocab_file_path,
 )
 from luke.utils.sentence_splitter import SentenceSplitter
+
+import re
+from typing import List
+
+#from transformers import PreTrainedTokenizer, RobertaTokenizer, XLMRobertaTokenizer
+
 
 logger = logging.getLogger(__name__)
 
@@ -395,3 +401,46 @@ class WikipediaPretrainingDataset:
                 words = []
                 links = []
         return ret
+
+
+XLM_ROBERTA_UNK_CHAR = "龘"
+
+
+def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
+    text = re.sub(r"\s+", " ", text).rstrip()
+    add_prefix_space = text.startswith(" ") or add_prefix_space
+    if not text:
+        return []
+    try:
+        #text = text.encode("utf-8",errors="surrogateescape").decode("utf-8")
+    
+        if isinstance(tokenizer, RobertaTokenizer):
+            return tokenizer.tokenize(text, add_prefix_space=add_prefix_space)
+        elif isinstance(tokenizer, XLMRobertaTokenizer):
+            if add_prefix_space:
+                return tokenizer.tokenize(text)
+            else:
+                # Append UNK_CHAR, and remove this below to avoid unnecessary whitespace.
+                return tokenizer.tokenize(XLM_ROBERTA_UNK_CHAR + text)[2:]
+        else:
+            return tokenizer.tokenize(text)
+    except TypeError:
+        print ("text:\n", text.encode("utf-8").decode("utf-8"))
+        logger.info("Error occured during tokenization. Skip.")
+        return []
+
+
+def tokenize_segments(
+    segments: List[str], tokenizer: PreTrainedTokenizer, add_prefix_space: bool = True
+) -> List[List[str]]:
+    tokenized_segments = []
+    for i, text in enumerate(segments):
+        if i == 0:
+            tokenized_segments.append(tokenize(text, tokenizer, add_prefix_space=add_prefix_space))
+        else:
+            prev_text = segments[i - 1]
+            tokenized_segments.append(
+                tokenize(text, tokenizer, add_prefix_space=prev_text.endswith(" ") or len(prev_text) == 0)
+            )
+
+    return tokenized_segments
