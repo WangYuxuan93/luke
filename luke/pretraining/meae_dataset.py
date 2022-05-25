@@ -212,44 +212,55 @@ class WikipediaPretrainingDataset:
 
         #entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
         number_of_items = 0
+        num_total_entity = 0
+        num_ignored = 0
+        len_dist = {32:0, 64:0, 128:0, 256:0, 512:0}
 
         options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
-        file_id = 0
-        tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
-        writer = TFRecordWriter(tf_file, options=options)
+        #file_id = 0
+        #tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
+        tf_file = os.path.join(output_dir, DATASET_FILE)
+        #writer = TFRecordWriter(tf_file, options=options)
         
-        with tqdm(total=len(target_titles)) as pbar:
-            initargs = (
-                dump_db,
-                tokenizer,
-                dictionary,
-                sentence_splitter,
-                entity_vocab,
-                max_num_tokens,
-                max_entity_length,
-                max_mention_length,
-                min_sentence_length,
-                abstract_only,
-                include_sentences_without_entities,
-                include_unk_entities,
-            )
-            with closing(
-                Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
-            ) as pool:
-                for ret in pool.imap(
-                    WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
-                ):
-                    for data in ret:
-                        writer.write(data)
-                        number_of_items += 1
-
-                        if number_of_items % examples_per_file == 0:
-                            writer.close()
-                            file_id += 1
-                            tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
-                            writer = TFRecordWriter(tf_file, options=options)
-
-                    pbar.update()
+        with TFRecordWriter(tf_file, options=options) as writer:
+            with tqdm(total=len(target_titles)) as pbar:
+                initargs = (
+                    dump_db,
+                    tokenizer,
+                    dictionary,
+                    sentence_splitter,
+                    entity_vocab,
+                    max_num_tokens,
+                    max_entity_length,
+                    max_mention_length,
+                    min_sentence_length,
+                    abstract_only,
+                    include_sentences_without_entities,
+                    include_unk_entities,
+                )
+                with closing(
+                    Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
+                ) as pool:
+                    for item in pool.imap(
+                        WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
+                    ):
+                        ret, n_total_entity, n_ignored, seq_lens = item
+                        for data in ret:
+                            #data, n_collected_entity, n_ignored, seq_len = item
+                            writer.write(data)
+                            number_of_items += 1
+                        
+                        num_total_entity += n_total_entity
+                        num_ignored += n_ignored
+                        for seq_len in seq_lens:
+                            for max_len in [32, 64, 128, 256, 512]:
+                                if seq_len < max_len:
+                                    len_dist[max_len] += 1
+                        pbar.update()
+                
+                len_dist_str = " ".join([str(max_len)+":"+str(len_dist[max_len]) for max_len in len_dist])
+                logger.info("Total/Ignored entities = {}/{}".format(num_total_entity, num_ignored))
+                logger.info("Example length distribution: {}".format(len_dist_str))
 
 
 
@@ -317,13 +328,17 @@ class WikipediaPretrainingDataset:
                 continue
 
             paragraph_text = paragraph.text
+            paragraph_text = paragraph_text.encode("utf-8", "ignore").decode("utf-8")
 
             # First, get paragraph links.
             # Parapraph links are represented its form (link_title) and the start/end positions of strings
             # (link_start, link_end).
             paragraph_links = []
             for link in paragraph.wiki_links:
-                link_title = _dump_db.resolve_redirect(link.title)
+                try:
+                    link_title = _dump_db.resolve_redirect(link.title)
+                except:
+                    logger.info("Failed to resolve title: {}, {}".format(link.title, link.title.encode("unicode-escape").decode("unicode-escape")))
                 # remove category links
                 if link_title.startswith("Category:") and link.text.lower().startswith("category:"):
                     paragraph_text = (
@@ -372,6 +387,9 @@ class WikipediaPretrainingDataset:
         ret = []
         words = []
         links = []
+        n_total_entity = 0
+        n_ignored = 0
+        seq_lens = []
         for i, (sent_words, sent_links) in enumerate(sentences):
             links += [(id_, start + len(words), end + len(words)) for id_, start, end in sent_links]
             words += sent_words
@@ -392,12 +410,16 @@ class WikipediaPretrainingDataset:
                     entity_labels = np.zeros_like(word_ids)
                     mention_boundaries = np.zeros_like(word_ids)
                     for id_, start, end in links:
+                        n_total_entity += 1
+                        if start == end:
+                            n_ignored += 1
+                            continue
                         entity_labels[start] = id_
                         mention_boundaries[start] = 1
                         for tok_id in range(start+1, end):
                             mention_boundaries[tok_id] = 2
                     
-                    if True:
+                    if False:
                         print ("words:\n", words)
                         print ("word_ids:\n", word_ids)
                         print ("entity_labels:\n", entity_labels)
@@ -422,10 +444,11 @@ class WikipediaPretrainingDataset:
                         )
                     )
                     ret.append((example.SerializeToString()))
+                    seq_lens.append(len(word_ids))
 
                 words = []
                 links = []
-        return ret
+        return (ret, n_total_entity, n_ignored, seq_lens)
 
 # this is a chinese character that will produce ['_', '龘', ...] after tokenized
 # when added before the original text
@@ -448,7 +471,7 @@ def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
         else:
             return tokenizer.encode(XLM_ROBERTA_UNK_CHAR + text, out_type=str)[2:]
     except TypeError:
-        print ("text:\n", text.encode("utf-8").decode("utf-8"))
+        print ("text:\n", repr(text))#text.encode("utf-8").decode("utf-8"))
         logger.info("Error occured during tokenization. Skip.")
         return []
 
