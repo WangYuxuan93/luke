@@ -9,7 +9,7 @@ lcs=(ar bn de nl el en es fi fr hi id it ja ko pl pt ru sv sw te th tr vi zh)
 for ((i=$1;i<=$2;i++))
 do
   l=${lcs[$i]}
-  command="python luke/cli.py build-wikipedia-pretraining-dataset-for-meae $dir/wikidb/${l}wiki.db ${modelname} ${entityvocab} $dir/dataset/${l} --sentence-splitter=${l} --pool-size 95"
+  command="python luke/cli.py build-wikipedia-pretraining-dataset-for-meae $dir/wikidb/${l}wiki.db ${modelname} ${entityvocab} $dir/dataset/${l} --sentence-splitter=${l} --pool-size 95 --chunk-size 1000"
   echo $command
   $command
 done

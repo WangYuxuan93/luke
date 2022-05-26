@@ -19,6 +19,6 @@ it = tf.compat.v1.data.make_one_shot_iterator(dataset)
 it = it.get_next()
 
 with tf.compat.v1.Session() as sess:
-    for _ in range(5):
+    for _ in range(2):
         obj = sess.run(it)
         print (obj)
