@@ -210,7 +210,7 @@ class WikipediaPretrainingDataset:
 
         #tokenizer.save_pretrained(output_dir)
 
-        #entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
+        entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
         number_of_items = 0
         num_total_entity = 0
         num_ignored = 0
@@ -244,7 +244,7 @@ class WikipediaPretrainingDataset:
                     for item in pool.imap_unordered(
                         WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
                     ):
-                        ret, n_total_entity, n_ignored, seq_lens = item
+                        ret, n_total_entity, n_ignored, seq_len_dist = item
                         for data in ret:
                             #data, n_collected_entity, n_ignored, seq_len = item
                             writer.write(data)
@@ -252,13 +252,11 @@ class WikipediaPretrainingDataset:
                         
                         num_total_entity += n_total_entity
                         num_ignored += n_ignored
-                        for seq_len in seq_lens:
-                            for max_len in [32, 64, 128, 256, 512]:
-                                if seq_len < max_len:
-                                    len_dist[max_len] += 1
+                        for max_len in [32, 64, 128, 256, 512]:
+                            len_dist[max_len] += seq_len_dist[max_len]
                         pbar.update()
                 
-                len_dist_str = " ".join([str(max_len)+":"+str(len_dist[max_len]) for max_len in len_dist])
+                len_dist_str = ", ".join([str(max_len)+":"+str(len_dist[max_len]) for max_len in len_dist])
                 logger.info("Total/Ignored entities = {}/{}".format(num_total_entity, num_ignored))
                 logger.info("Example length distribution: {}".format(len_dist_str))
 
@@ -338,7 +336,7 @@ class WikipediaPretrainingDataset:
                 try:
                     link_title = _dump_db.resolve_redirect(link.title)
                 except:
-                    logger.info("Failed to resolve title: {}, {}".format(link.title, link.title.encode("unicode-escape").decode("unicode-escape")))
+                    logger.info("Failed to resolve title: {}, {}".format(link.title, repr(link.title)))
                 # remove category links
                 if link_title.startswith("Category:") and link.text.lower().startswith("category:"):
                     paragraph_text = (
@@ -390,6 +388,7 @@ class WikipediaPretrainingDataset:
         n_total_entity = 0
         n_ignored = 0
         seq_lens = []
+        len_dist = {32:0, 64:0, 128:0, 256:0, 512:0}
         for i, (sent_words, sent_links) in enumerate(sentences):
             links += [(id_, start + len(words), end + len(words)) for id_, start, end in sent_links]
             words += sent_words
@@ -444,11 +443,16 @@ class WikipediaPretrainingDataset:
                         )
                     )
                     ret.append((example.SerializeToString()))
-                    seq_lens.append(len(word_ids))
+                    seq_len = len(word_ids)
+                    for max_len in [32,64,128,256,512]:
+                        if seq_len < max_len:
+                            len_dist[max_len] += 1
+                            break
+                    #seq_lens.append(len(word_ids))
 
                 words = []
                 links = []
-        return (ret, n_total_entity, n_ignored, seq_lens)
+        return (ret, n_total_entity, n_ignored, len_dist)
 
 # this is a chinese character that will produce ['_', '龘', ...] after tokenized
 # when added before the original text
