@@ -177,6 +177,7 @@ class LukePretrainingBatchWorker(multiprocessing.Process):
                 max_word_len = 1
                 max_entity_len = 1
 
+    # one sentence input
     def _create_word_features(self, word_ids: np.ndarray, masked_entity_positions: List[List[int]]):
         output_word_ids = np.full(self._max_seq_length, self._pad_id, dtype=np.int)
         output_word_ids[: word_ids.size + 2] = np.concatenate([[self._cls_id], word_ids, [self._sep_id]])
@@ -192,14 +193,14 @@ class LukePretrainingBatchWorker(multiprocessing.Process):
         if self._masked_lm_prob != 0.0:
             num_masked_words = 0
             masked_lm_labels = np.full(self._max_seq_length, -1, dtype=np.int)
-
+            # replace id at index with mask_id, add real id to masked_lm_labels[index]
             def perform_masking(indices: List[int]):
                 p = random.random()
                 for index in indices:
                     masked_lm_labels[index] = output_word_ids[index]
                     if p < (1.0 - self._random_word_prob - self._unmasked_word_prob):
                         output_word_ids[index] = self._mask_id
-                    elif p < (1.0 - self._unmasked_word_prob):
+                    elif p < (1.0 - self._unmasked_word_prob): # random replace with other id
                         output_word_ids[index] = random.randint(self._pad_id + 1, self._tokenizer.vocab_size - 1)
 
             masked_entity_positions_set = frozenset()
@@ -208,22 +209,23 @@ class LukePretrainingBatchWorker(multiprocessing.Process):
                     perform_masking(indices)
                     num_masked_words += len(indices)
                 masked_entity_positions_set = frozenset([p for li in masked_entity_positions for p in li])
-
+            # compute number of words to be masked
             num_to_predict = max(1, int(round(word_ids.size * self._masked_lm_prob)))
             candidate_word_indices = []
-
+            # starting from position 1
             for i, word in enumerate(self._tokenizer.convert_ids_to_tokens(word_ids), 1):  # 1 for [CLS]
+                # group subwords by word if _whole_word_masking flag is on
                 if self._whole_word_masking and self._is_subword(word) and candidate_word_indices:
                     candidate_word_indices[-1].append(i)
                 else:
                     candidate_word_indices.append([i])
-
+            # remove ids already in masked entity position
             candidate_word_indices = [
                 indices
                 for indices in candidate_word_indices
                 if all(ind not in masked_entity_positions_set for ind in indices)
             ]
-
+            # randomly masking, one at a time, until masked word reaches the num to be masked
             for i in np.random.permutation(len(candidate_word_indices)):
                 indices_to_mask = candidate_word_indices[i]
                 if len(indices_to_mask) > num_to_predict - num_masked_words:
@@ -241,11 +243,13 @@ class LukePretrainingBatchWorker(multiprocessing.Process):
                 random_index = random.randint(1, word_ids.size - 2)
                 masked_lm_labels[random_index] = output_word_ids[random_index]
                 output_word_ids[random_index] = self._mask_id
-
+            # only exist if mask_prob > 0
             ret["masked_lm_labels"] = masked_lm_labels
 
         return ret
 
+    # input entity_position_ids.shape = (-1, self.metadata["max_mention_length"]) 
+    # see dataset.py L152
     def _create_entity_features(self, entity_ids: np.ndarray, entity_position_ids: np.ndarray):
         output_entity_ids = np.zeros(self._max_entity_length, dtype=np.int)
         output_entity_ids[: entity_ids.size] = entity_ids
@@ -275,7 +279,7 @@ class LukePretrainingBatchWorker(multiprocessing.Process):
                     output_entity_ids[index] = self._entity_mask_id
                 elif p < (1.0 - self._unmasked_entity_prob):
                     output_entity_ids[index] = random.randint(self._entity_mask_id + 1, self._entity_vocab.size - 1)
-
+                # remember the corresponding word positions of the masked entity
                 masked_positions.append([int(p) for p in entity_position_ids[index] if p != -1])
 
             ret["masked_entity_labels"] = masked_entity_labels

@@ -351,6 +351,9 @@ class WikipediaPretrainingDataset:
                     assert _min_sentence_length <= len(word_ids) <= _max_num_tokens
                     entity_ids = [id_ for id_, _, _, in links]
                     assert len(entity_ids) <= _max_entity_length
+                    # assume we have 2 entities [[entity_id0, 1,3],[entity_id1, 5,8]], max_mention_length = 5
+                    # then entity_position_ids = chain(*[[1,2,-1,-1,-1],[5,6,7,-1,-1]]) = [1,2,-1,-1,-1,5,6,7,-1,-1]
+                    # see dataset.py L152 where it is reshaped as .reshape(-1, self.metadata["max_mention_length"])
                     entity_position_ids = itertools.chain(
                         *[
                             (list(range(start, end)) + [-1] * (_max_mention_length - end + start))[:_max_mention_length]
