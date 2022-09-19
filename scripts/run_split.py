@@ -57,4 +57,3 @@ for lc, chunk_size in lc_dict.items():
 
     print (cmd)
     os.system(cmd)
-    exit()

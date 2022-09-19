@@ -15,6 +15,8 @@ def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
     if not text:
         return []
     try:
+        #text = text.encode("utf-8",errors="surrogateescape").decode("utf-8")
+    
         if isinstance(tokenizer, RobertaTokenizer):
             return tokenizer.tokenize(text, add_prefix_space=add_prefix_space)
         elif isinstance(tokenizer, XLMRobertaTokenizer):
@@ -26,6 +28,7 @@ def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
         else:
             return tokenizer.tokenize(text)
     except TypeError:
+        print ("text:\n", text.encode("utf-8").decode("utf-8"))
         logger.info("Error occured during tokenization. Skip.")
         return []
 
