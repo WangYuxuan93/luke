@@ -291,7 +291,11 @@ class MentionDB(object):
         ret = []
         for paragraph in _dump_db.get_paragraphs(title):
             for wiki_link in paragraph.wiki_links:
-                title = _dump_db.resolve_redirect(wiki_link.title)
+                try:
+                    title = _dump_db.resolve_redirect(wiki_link.title)
+                except:
+                    #print ("Failed resolving redirect {}".format(wiki_link.title))
+                    continue
                 text = wiki_link.text.replace(SEP_CHAR, REP_CHAR)
                 tokens = [_normalizer.normalize(t) for t in _tokenizer.tokenize(text)]
                 if len(tokens) <= _max_mention_length:
