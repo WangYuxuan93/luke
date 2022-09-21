@@ -14,6 +14,7 @@ from wikipedia2vec.utils.wiki_dump_reader import WikiDumpReader
 
 
 import examples.utils.wiki_entity_linker.mention_db
+import examples.utils.wiki_entity_linker.wiki_link_db
 
 
 @click.group()
@@ -36,6 +37,7 @@ def cli(verbose: bool, seed: int):
 
 
 cli.add_command(examples.utils.wiki_entity_linker.mention_db.build_from_wikipedia)
+cli.add_command(examples.utils.wiki_entity_linker.wiki_link_db.build_wiki_link_db)
 
 if __name__ == "__main__":
     cli()
