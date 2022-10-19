@@ -122,7 +122,10 @@ class WikiLinkDB(object):
         links = []
         for paragraph in _dump_db.get_paragraphs(title):
             for wiki_link in paragraph.wiki_links:
-                link_title = _dump_db.resolve_redirect(wiki_link.title)
+                try:
+                    link_title = _dump_db.resolve_redirect(wiki_link.title)
+                except:
+                    continue
                 if link_title not in _title_trie:
                     continue
 
@@ -132,6 +135,11 @@ class WikiLinkDB(object):
                 else:
                     link_prob = 0.0
 
-                links.append((wiki_link.text, _title_trie[link_title], link_prob))
+                try:
+                    #link_text = wiki_link.text.encode("utf-8", "ignore")
+                    links.append((link_text, _title_trie[link_title], link_prob))
+                except:
+                    continue
+                #links.append((wiki_link.text, _title_trie[link_title], link_prob))
 
         return title, links
