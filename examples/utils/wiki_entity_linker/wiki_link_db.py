@@ -6,6 +6,7 @@ from multiprocessing.pool import Pool
 import click
 import joblib
 import marisa_trie
+import json
 from tqdm import tqdm
 from wikipedia2vec.dump_db import DumpDB
 
@@ -38,7 +39,9 @@ def build_wiki_link_db(common_args, dump_db_file, mention_db_file, **kwargs):
 @click.option("--compress", default=3)
 def generate_redirect_file(dump_db_file, out_file, compress):
     data = {k: v for k, v in DumpDB(dump_db_file).redirects()}
-    joblib.dump(data, out_file, compress=compress)
+    #joblib.dump(data, out_file, compress=compress)
+    with open(out_file, "w") as fo:
+        json.dump(data, fo, indent=4)
 
 
 class WikiLink(object):
@@ -137,6 +140,7 @@ class WikiLinkDB(object):
 
                 try:
                     #link_text = wiki_link.text.encode("utf-8", "ignore")
+                    link_text = wiki_link.text
                     links.append((link_text, _title_trie[link_title], link_prob))
                 except:
                     continue
