@@ -194,6 +194,7 @@ class MentionDB(object):
         def item_generator():
             for (name, entity_counter) in name_dict.items():
                 doc_count = name_doc_counter[name]
+                # this is the sum of all the candidate entities count
                 total_link_count = sum(entity_counter.values())
 
                 if doc_count == 0:
