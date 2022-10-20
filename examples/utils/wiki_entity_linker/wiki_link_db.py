@@ -138,12 +138,12 @@ class WikiLinkDB(object):
                 else:
                     link_prob = 0.0
 
-                try:
-                    #link_text = wiki_link.text.encode("utf-8", "ignore")
-                    link_text = wiki_link.text
-                    links.append((link_text, _title_trie[link_title], link_prob))
-                except:
-                    continue
+                #try:
+                link_text = wiki_link.text.encode("utf-8", "ignore").decode("utf-8")
+                #link_text = wiki_link.text
+                links.append((link_text, _title_trie[link_title], link_prob))
+                #except:
+                #    continue
                 #links.append((wiki_link.text, _title_trie[link_title], link_prob))
 
         return title, links
