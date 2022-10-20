@@ -1,5 +1,9 @@
 from ast import dump
 import json
+try:
+    import jsonlines
+except:
+    print ("Failed importing jsonlines!")
 
 import click
 import tqdm
@@ -22,12 +26,14 @@ def get_titles(data_path: str):
 #@click.argument("data-path", type=str)
 @click.argument("save-path", type=str)
 @click.option("--wiki_link_db_path", type=str, default=None)
+@click.option("--format", type=str, default="json")
 #@click.option("--link_redirect_mappings_path", type=str, default=None)
 #@click.option("--model_redirect_mappings_path", type=str, default=None)
 def make_mention_candidates(
     dump_db_file: str,
     save_path: str,
     wiki_link_db_path: str,
+    format: str,
     #link_redirect_mappings_path: str,
     #model_redirect_mappings_path: str,
 ):
@@ -40,12 +46,20 @@ def make_mention_candidates(
         #model_redirect_mappings_path=model_redirect_mappings_path,
     )
 
-    mention_candidates = dict()
-    for title in tqdm.tqdm(dump_db.titles()):
-        mention_candidates[title] = mention_candidate_generator.get_mention_candidates(title)
-
-    with open(save_path, "w") as f:
-        json.dump(mention_candidates, f, indent=4, ensure_ascii=False)
+    if format == "json":
+        mention_candidates = dict()
+        for title in tqdm.tqdm(dump_db.titles()):
+            mention_candidates[title] = mention_candidate_generator.get_mention_candidates(title)
+        
+        with open(save_path, "w") as f:
+            json.dump(mention_candidates, f, indent=4, ensure_ascii=False)
+    elif format == "jsonl":
+        with jsonlines.open(save_path, "w") as f:
+            for title in tqdm.tqdm(dump_db.titles()):
+                mention_cands = mention_candidate_generator.get_mention_candidates(title)
+                f.write({title: mention_cands})
+    else:
+        print ("Unrecognized format {}!".format(format))
 
 
 if __name__ == "__main__":
