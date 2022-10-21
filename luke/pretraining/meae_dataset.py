@@ -29,6 +29,7 @@ from luke.utils.model_utils import (
     get_entity_vocab_file_path,
 )
 from luke.utils.sentence_splitter import SentenceSplitter
+from luke.utils.wiki_entity_linker import JsonWikiEntityLinker, WikiEntityLinker
 
 import re
 from typing import List
@@ -64,8 +65,11 @@ _abstract_only = _language = None
 @click.option("--chunk-size", default=100)
 @click.option("--max-num-documents", default=None, type=int)
 @click.option("--predefined-entities-only", is_flag=True)
+@click.argument("mention_candidate_json_file_paths")
+@click.option("--use-entity-linker", is_flag=True)
 def build_wikipedia_pretraining_dataset_for_meae(
-        dump_db_file: str, model_path: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, examples_per_file: int, **kwargs
+        dump_db_file: str, model_path: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, 
+        examples_per_file: int, mention_candidate_json_file_paths: str, **kwargs
 ):
     dump_db = DumpDB(dump_db_file)
     tokenizer_path = os.path.join(model_path, "sentencepiece.bpe.model")
@@ -75,11 +79,30 @@ def build_wikipedia_pretraining_dataset_for_meae(
     dictionary = Dictionary.load(dict_path)
     sentence_splitter = SentenceSplitter.from_name(sentence_splitter)
 
+    entity_vocab = EntityVocab(entity_vocab_file)
+
+    entity_linker = JsonWikiEntityLinker(
+        tokenizer, 
+        mention_candidate_json_file_paths,
+        entity_vocab,
+        max_mention_length=10,
+    )
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    entity_vocab = EntityVocab(entity_vocab_file)
-    WikipediaPretrainingDataset.build(dump_db, tokenizer, dictionary, sentence_splitter, entity_vocab, output_dir, examples_per_file=examples_per_file, **kwargs)
+    
+    WikipediaPretrainingDataset.build(
+        dump_db, 
+        tokenizer, 
+        dictionary, 
+        sentence_splitter, 
+        entity_vocab, 
+        output_dir, 
+        examples_per_file=examples_per_file, 
+        entity_linker=entity_linker, 
+        **kwargs
+    )
 
 
 class WikipediaPretrainingDataset:
@@ -178,6 +201,7 @@ class WikipediaPretrainingDataset:
         entity_vocab: EntityVocab,
         output_dir: str,
         examples_per_file: int,
+        entity_linker: WikiEntityLinker,
         max_seq_length: int,
         max_entity_length: int,
         max_mention_length: int,
@@ -189,6 +213,7 @@ class WikipediaPretrainingDataset:
         chunk_size: int,
         max_num_documents: Optional[int],
         predefined_entities_only: bool,
+        use_entity_linker: bool,
     ):
 
         target_titles = [
@@ -237,6 +262,8 @@ class WikipediaPretrainingDataset:
                     abstract_only,
                     include_sentences_without_entities,
                     include_unk_entities,
+                    entity_linker,
+                    use_entity_linker,
                 )
                 with closing(
                     Pool(pool_size, initializer=WikipediaPretrainingDataset._initialize_worker, initargs=initargs)
@@ -291,11 +318,14 @@ class WikipediaPretrainingDataset:
         abstract_only: bool,
         include_sentences_without_entities: bool,
         include_unk_entities: bool,
+        entity_linker: WikiEntityLinker,
+        use_entity_linker: bool,
     ):
         global _dump_db, _tokenizer, _dictionary, _sentence_splitter, _entity_vocab, _max_num_tokens, _max_entity_length
         global _max_mention_length, _min_sentence_length, _include_sentences_without_entities, _include_unk_entities
         global _abstract_only
         global _language
+        global _entity_linker, _use_entity_linker
 
         _dump_db = dump_db
         _tokenizer = tokenizer
@@ -310,6 +340,8 @@ class WikipediaPretrainingDataset:
         _include_unk_entities = include_unk_entities
         _abstract_only = abstract_only
         _language = dump_db.language
+        _entity_linker = entity_linker
+        _use_entity_linker = use_entity_linker
 
     @staticmethod
     def _process_page(page_title: str):
@@ -347,7 +379,11 @@ class WikipediaPretrainingDataset:
                         paragraph_links.append((link_title, link.start, link.end))
                     elif _include_unk_entities:
                         paragraph_links.append((UNK_TOKEN, link.start, link.end))
-
+            
+            if _use_entity_linker:
+                candidate_links = _entity_linker.link_entities_in_text(paragraph_text, _language, page_title, _language)
+                paragraph_links = merge_links(paragraph_links, candidate_links, paragraph_text)
+            
             sent_spans = _sentence_splitter.get_sentence_spans(paragraph_text.rstrip())
             for sent_start, sent_end in sent_spans:
                 cur = sent_start
@@ -453,6 +489,24 @@ class WikipediaPretrainingDataset:
                 words = []
                 links = []
         return (ret, n_total_entity, n_ignored, len_dist)
+
+
+def merge_links(paragraph_links, candidate_links, paragraph_text):
+    link_starts = {}
+    links = []
+    print ("Text:\n{}\nLinks:".format(paragraph_text))
+    for entity, start, end in paragraph_links:
+        link_starts[start] = (entity, start, end)
+        links.append((entity, start, end))
+        print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
+    print ("Cand Links:")
+    for entity, start, end in candidate_links:
+        if start not in link_starts:
+            links.append((entity, start, end))
+            print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
+        else:
+            print ("{}:{}-{}({}) ignored".format(entity, start, end, paragraph_text[start:end]))
+    return links
 
 # this is a chinese character that will produce ['_', '龘', ...] after tokenized
 # when added before the original text
