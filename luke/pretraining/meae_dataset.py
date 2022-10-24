@@ -87,6 +87,7 @@ def build_wikipedia_pretraining_dataset_for_meae(
         mention_candidate_json_file_paths,
         entity_vocab,
         max_mention_length=10,
+        language=dump_db.language,
     )
 
     if not os.path.exists(output_dir):

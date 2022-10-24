@@ -112,11 +112,16 @@ class JsonWikiEntityLinker(WikiEntityLinker):
         mention_candidate_json_file_paths: Dict[Tuple[str, str], str],
         entity_vocab: EntityVocab,
         max_mention_length: int = 10,
+        language: str = None,
     ):
         super().__init__(tokenizer=tokenizer, entity_vocab=entity_vocab, max_mention_length=max_mention_length)
         self.mention_candidates = {}
-        with tqdm(total=len(mention_candidate_json_file_paths.items())) as pbar:
-            for (title_token_language), path in mention_candidate_json_file_paths.items():
+        if language is not None:
+            load_paths = {language: mention_candidate_json_file_paths[language]}
+        else:
+            load_paths = mention_candidate_json_file_paths
+        with tqdm(total=len(load_paths.items())) as pbar:
+            for (title_token_language), path in load_paths.items():
                 self.mention_candidates[title_token_language] = json.load(open(path))
                 pbar.update()
         #self.mention_candidates = {
