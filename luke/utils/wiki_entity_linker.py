@@ -40,7 +40,7 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         self.max_mention_length = max_mention_length
         self.tokenizer = tokenizer
 
-    def link_entities_in_tokens(self, tokens: List[Token], token_language: str, title: str, title_language: str) -> List[Mention]:
+    def link_entities_in_tokens(self, tokens: List[Token], token_language: str, title: str, title_language: str, debug = False) -> List[Mention]:
         mention_candidates = self.get_mention_candidates(title, title_language, token_language)
         return self._link_entities([t.text for t in tokens], mention_candidates, language=token_language)
     
@@ -49,10 +49,18 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         tokens = tokenize(text, self.tokenizer, add_prefix_space=False)
         mentions = self._link_entities(tokens, mention_candidates, language=token_language)
         links = []
+        if debug:
+            print ("@@@@@@@@@@@\nText:\n{}\nTokens:\n{}\nLinks:\n".format(text, tokens))
         for entity, start, end in mentions:
             text_start = len(convert_tokens_to_string(tokens[:start]))
+            if tokens[start].startswith(SPIECE_UNDERLINE):
+                text_start += 1
             text_end = len(convert_tokens_to_string(tokens[:end]))
             links.append((entity.title, text_start, text_end))
+            if debug:
+                print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
+                print ("prefix: {}\nsuffix: {}".format(convert_tokens_to_string(tokens[:start]), convert_tokens_to_string(tokens[:end])))
+                print ("text links | {}:{}-{} ({})".format(entity, text_start, text_end, text[text_start:text_end]))
         return links
 
     @abstractmethod
