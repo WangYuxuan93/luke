@@ -520,7 +520,7 @@ def merge_links(paragraph_links, candidate_links, paragraph_text):
 XLM_ROBERTA_UNK_CHAR = "龘"
 
 
-def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
+def tokenize(text: str, tokenizer: SentencePieceProcessor, add_prefix_space: bool):
     text = re.sub(r"\s+", " ", text).rstrip()
     add_prefix_space = text.startswith(" ") or add_prefix_space
     if not text:
@@ -537,7 +537,7 @@ def tokenize(text: str, tokenizer: PreTrainedTokenizer, add_prefix_space: bool):
 
 
 def tokenize_segments(
-    segments: List[str], tokenizer: PreTrainedTokenizer, add_prefix_space: bool = True
+    segments: List[str], tokenizer: SentencePieceProcessor, add_prefix_space: bool = True
 ) -> List[List[str]]:
     tokenized_segments = []
     for i, text in enumerate(segments):

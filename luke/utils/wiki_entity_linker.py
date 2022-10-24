@@ -2,14 +2,16 @@ from abc import abstractmethod, ABCMeta
 from typing import Dict, List, Tuple, NamedTuple
 import json
 from tqdm import tqdm
+import re
+import logging
 
+from sentencepiece import SentencePieceProcessor
 from allennlp.common import Registrable
 from allennlp.data import Token
-from transformers.tokenization_utils import PreTrainedTokenizer
+#from transformers.tokenization_utils import PreTrainedTokenizer
 
 from luke.utils.entity_vocab import PAD_TOKEN, Entity, EntityVocab
-#from luke.pretraining.meae_dataset import tokenize
-from luke.pretraining.tokenization import tokenize
+#from luke.pretraining.tokenization import tokenize
 from transformers.models.xlm_roberta.tokenization_xlm_roberta import SPIECE_UNDERLINE
 
 
@@ -30,7 +32,7 @@ class Mention(NamedTuple):
 class WikiEntityLinker(Registrable, metaclass=ABCMeta):
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
+        tokenizer: SentencePieceProcessor,
         entity_vocab: EntityVocab,
         max_mention_length: int = 10,
     ):
@@ -113,7 +115,7 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
 class JsonWikiEntityLinker(WikiEntityLinker):
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
+        tokenizer: SentencePieceProcessor,
         mention_candidate_json_file_paths: Dict[Tuple[str, str], str],
         entity_vocab: EntityVocab,
         max_mention_length: int = 10,
@@ -139,3 +141,22 @@ class JsonWikiEntityLinker(WikiEntityLinker):
         mention_candidates = self.mention_candidates[f"{title_language}"][title]
         return mention_candidates
 
+
+XLM_ROBERTA_UNK_CHAR = "龘"
+
+logger = logging.getLogger(__name__)
+
+def tokenize(text: str, tokenizer: SentencePieceProcessor, add_prefix_space: bool):
+    text = re.sub(r"\s+", " ", text).rstrip()
+    add_prefix_space = text.startswith(" ") or add_prefix_space
+    if not text:
+        return []
+    try:
+        if add_prefix_space:
+            return tokenizer.encode(text, out_type=str)
+        else:
+            return tokenizer.encode(XLM_ROBERTA_UNK_CHAR + text, out_type=str)[2:]
+    except TypeError:
+        print ("text:\n", repr(text))#text.encode("utf-8").decode("utf-8"))
+        logger.info("Error occured during tokenization. Skip.")
+        return []
