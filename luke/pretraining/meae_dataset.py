@@ -13,7 +13,7 @@ import click
 import numpy as np
 import tensorflow as tf
 from sentencepiece import SentencePieceProcessor
-from fairseq.data.dictionary import Dictionary
+from luke.utils.dictionary import Dictionary
 import transformers
 from tensorflow.io import TFRecordWriter
 from tensorflow.train import Int64List
