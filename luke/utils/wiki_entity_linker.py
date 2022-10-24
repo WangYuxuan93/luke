@@ -7,7 +7,8 @@ from allennlp.data import Token
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from luke.utils.entity_vocab import PAD_TOKEN, Entity, EntityVocab
-from luke.pretraining.meae_dataset import tokenize
+#from luke.pretraining.meae_dataset import tokenize
+from luke.pretraining.tokenization import tokenize
 
 def normalize_mention(text: str) -> str:
     return " ".join(text.split(" ")).strip()
