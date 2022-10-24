@@ -65,11 +65,11 @@ _abstract_only = _language = None
 @click.option("--chunk-size", default=100)
 @click.option("--max-num-documents", default=None, type=int)
 @click.option("--predefined-entities-only", is_flag=True)
-@click.option("--mention_candidate_json_file_paths")
+@click.option("--mention_candidate")
 @click.option("--use-entity-linker", is_flag=True)
 def build_wikipedia_pretraining_dataset_for_meae(
         dump_db_file: str, model_path: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, 
-        examples_per_file: int, mention_candidate_json_file_paths: str, **kwargs
+        examples_per_file: int, mention_candidate: str, **kwargs
 ):
     dump_db = DumpDB(dump_db_file)
     tokenizer_path = os.path.join(model_path, "sentencepiece.bpe.model")
@@ -81,6 +81,7 @@ def build_wikipedia_pretraining_dataset_for_meae(
 
     entity_vocab = EntityVocab(entity_vocab_file)
 
+    mention_candidate_json_file_paths = json.load(open(mention_candidate, "r"))
     entity_linker = JsonWikiEntityLinker(
         tokenizer, 
         mention_candidate_json_file_paths,
