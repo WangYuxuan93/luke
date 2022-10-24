@@ -130,6 +130,7 @@ class JsonWikiEntityLinker(WikiEntityLinker):
         #}
 
     def get_mention_candidates(self, title: str, title_language: str, token_language: str) -> Dict[str, str]:
-        mention_candidates = self.mention_candidates[f"{title_language}-{token_language}"][title]
+        #mention_candidates = self.mention_candidates[f"{title_language}-{token_language}"][title]
+        mention_candidates = self.mention_candidates[f"{title_language}"][title]
         return mention_candidates
 
