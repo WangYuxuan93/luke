@@ -1,6 +1,7 @@
 from abc import abstractmethod, ABCMeta
 from typing import Dict, List, Tuple, NamedTuple
 import json
+from tqdm import tqdm
 
 from allennlp.common import Registrable
 from allennlp.data import Token
@@ -113,10 +114,15 @@ class JsonWikiEntityLinker(WikiEntityLinker):
         max_mention_length: int = 10,
     ):
         super().__init__(tokenizer=tokenizer, entity_vocab=entity_vocab, max_mention_length=max_mention_length)
-        self.mention_candidates = {
-            title_token_language: json.load(open(path))
-            for (title_token_language), path in mention_candidate_json_file_paths.items()
-        }
+        self.mention_candidates = {}
+        with tqdm(total=len(mention_candidate_json_file_paths.items())) as pbar:
+            for (title_token_language), path in mention_candidate_json_file_paths.items():
+                self.mention_candidates[title_token_language] = json.load(open(path))
+                pbar.update()
+        #self.mention_candidates = {
+        #    title_token_language: json.load(open(path))
+        #    for (title_token_language), path in mention_candidate_json_file_paths.items()
+        #}
 
     def get_mention_candidates(self, title: str, title_language: str, token_language: str) -> Dict[str, str]:
         mention_candidates = self.mention_candidates[f"{title_language}-{token_language}"][title]
