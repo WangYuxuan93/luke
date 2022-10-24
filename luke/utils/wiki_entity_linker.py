@@ -10,7 +10,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from luke.utils.entity_vocab import PAD_TOKEN, Entity, EntityVocab
 #from luke.pretraining.meae_dataset import tokenize
 from luke.pretraining.tokenization import tokenize
-from transformers.tokenization_xlm_roberta import SPIECE_UNDERLINE
+from transformers.models.xlm_roberta.tokenization_xlm_roberta import SPIECE_UNDERLINE
 
 
 # from transformers/tokenization_xlm_roberta.py
