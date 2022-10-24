@@ -10,6 +10,14 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from luke.utils.entity_vocab import PAD_TOKEN, Entity, EntityVocab
 #from luke.pretraining.meae_dataset import tokenize
 from luke.pretraining.tokenization import tokenize
+from transformers.tokenization_xlm_roberta import SPIECE_UNDERLINE
+
+
+# from transformers/tokenization_xlm_roberta.py
+def convert_tokens_to_string(tokens):
+    """Converts a sequence of tokens (strings for sub-words) in a single string."""
+    out_string = "".join(tokens).replace(SPIECE_UNDERLINE, " ").strip()
+    return out_string
 
 def normalize_mention(text: str) -> str:
     return " ".join(text.split(" ")).strip()
@@ -40,8 +48,8 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         mentions = self._link_entities(tokens, mention_candidates, language=token_language)
         links = []
         for entity, start, end in mentions:
-            text_start = len(self.tokenizer.convert_tokens_to_string(tokens[:start]))
-            text_end = len(self.tokenizer.convert_tokens_to_string(tokens[:end]))
+            text_start = len(convert_tokens_to_string(tokens[:start]))
+            text_end = len(convert_tokens_to_string(tokens[:end]))
             links.append((entity.title, text_start, text_end))
         return links
 
@@ -58,7 +66,7 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
 
             for end in range(min(start + self.max_mention_length, len(tokens)), start, -1):
 
-                mention_text = self.tokenizer.convert_tokens_to_string(tokens[start:end])
+                mention_text = convert_tokens_to_string(tokens[start:end])
                 mention_text = normalize_mention(mention_text)
 
                 title = mention_candidates.get(mention_text, None)
@@ -72,9 +80,6 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
                 break
 
         return mentions
-
-    #def set_tokenizer(self, tokenizer: PreTrainedTokenizer):
-    #    self.tokenizer = tokenizer
 
     def mentions_to_entity_features(self, tokens: List[Token], mentions: List[Mention]) -> Dict:
 
