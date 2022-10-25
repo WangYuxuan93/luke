@@ -14,6 +14,7 @@ from luke.utils.entity_vocab import PAD_TOKEN, Entity, EntityVocab
 #from luke.pretraining.tokenization import tokenize
 from transformers.models.xlm_roberta.tokenization_xlm_roberta import SPIECE_UNDERLINE
 
+import difflib
 
 # from transformers/tokenization_xlm_roberta.py
 def convert_tokens_to_string(tokens):
@@ -26,7 +27,7 @@ def normalize_mention(text: str) -> str:
 
 def count_prefix_space(text):
         for i, j in enumerate(text):
-            if j != ' ':
+            if j not in [' ','\t','\u200b','\xa0']:
                 return i
 
 class Mention(NamedTuple):
@@ -55,27 +56,29 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         mentions = self._link_entities(tokens, mention_candidates, language=token_language)
         links = []
         if debug:
-            print ("@@@@@@@@@@@\nText:\n{}\nTokens:\n{}\nLinks:\n".format(text, tokens))
+            print ("@@@@@@@@@@@\nText:\n[{}]\nTokens:\n{}\nLinks:\n".format(text, tokens))
         if convert_tokens_to_string(tokens) == text:
-            print ("###Regular")
+            #print ("###Regular")
             for entity, start, end in mentions:
                 text_start = len(convert_tokens_to_string(tokens[:start]))
                 if tokens[start].startswith(SPIECE_UNDERLINE):
                     text_start += 1
                 text_end = len(convert_tokens_to_string(tokens[:end]))
                 links.append((entity.title, text_start, text_end))
-                if debug:
+                if False:
                     print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
                     print ("prefix: {}\nsuffix: {}".format(convert_tokens_to_string(tokens[:start]), convert_tokens_to_string(tokens[:end])))
                     print ("text links | {}:{}-{} ({})".format(entity, text_start, text_end, text[text_start:text_end]))
         else:
-            print ("$$$Align")
+            #print ("$$$Align")
             token_id_to_text_id = self.get_token_id_to_text_id(tokens, text)
+            if token_id_to_text_id is None:
+                return []
             for entity, start, end in mentions:
                 text_start = token_id_to_text_id[start]
                 if tokens[start].startswith(SPIECE_UNDERLINE):
                     text_start += 1
-                text_end = token_id_to_text_id[end-1] + len(tokens[end].replace(SPIECE_UNDERLINE, " "))
+                text_end = token_id_to_text_id[end-1] + len(tokens[end-1].replace(SPIECE_UNDERLINE, " "))
                 links.append((entity.title, text_start, text_end))
                 if debug:
                     print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
@@ -84,23 +87,35 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         
         return links
     
-    def get_token_id_to_text_id(self, tokens, text):
-        if convert_tokens_to_string(tokens) == text:
-            return 
+    def get_token_id_to_text_id(self, tokens, text, debug=False):
         str = ""
         token_id_to_text_id = {}
         for token_id, token in enumerate(tokens):
+            if len(str) >= len(text):
+                return None
             num_space_prefix = count_prefix_space(text[len(str):])
-            if num_space_prefix >= 2:
-                token_id_to_text_id[token_id] = len(str) + (num_space_prefix - 1)
-                str += ' ' * (num_space_prefix-1) + token.replace(SPIECE_UNDERLINE, " ")
-            else:
-                token_id_to_text_id[token_id] = len(str)
-                str += token.replace(SPIECE_UNDERLINE, " ")
+            try:
+                if num_space_prefix >= 2:
+                    #print ("$$$$$$$$$$\nnum_space_prefix >= 2:\nlen={}\nstr :[{}]".format(len(str), str))
+                    token_id_to_text_id[token_id] = len(str) + (num_space_prefix - 1)
+                    str += ' ' * (num_space_prefix-1) + token.replace(SPIECE_UNDERLINE, " ")
+                else:
+                    token_id_to_text_id[token_id] = len(str)
+                    str += token.replace(SPIECE_UNDERLINE, " ")
+            except:
+                if debug:
+                    print ("!!!!!!!\nFailed \ntext:[{}]\nstr :[{}]".format(text, str))
+                return None
         try:
-            assert str == text
+            assert str == text.rstrip() or len(str) == len(text.rstrip())
         except:
-            print ("*********\nMismatch:\nText:{}\nCcat:{}\nToks:{}".format(text, str, tokens))
+            if debug:
+                print ("*********\nMismatch:\nText({}):[{}]\nCcat({}):[{}]\nToks:{}".format(len(text), text, len(str), str, tokens))
+                print ("Last token: Text:'{}', Ccat:'{}'".format(text[-1], str[-1]))
+                d = difflib.Differ()
+                diff = d.compare([text], [str])
+                print ("\n".join(list(diff)))
+            return None
         return token_id_to_text_id
 
     @abstractmethod

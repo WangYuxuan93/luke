@@ -242,6 +242,8 @@ class WikipediaPretrainingDataset:
         num_total_entity = 0
         num_ignored = 0
         len_dist = {32:0, 64:0, 128:0, 256:0, 512:0}
+        num_total_hyper = 0
+        num_total_linked = 0
 
         options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
         #file_id = 0
@@ -273,7 +275,7 @@ class WikipediaPretrainingDataset:
                     for item in pool.imap_unordered(
                         WikipediaPretrainingDataset._process_page, target_titles, chunksize=chunk_size
                     ):
-                        ret, n_total_entity, n_ignored, seq_len_dist = item
+                        ret, n_total_entity, n_ignored, seq_len_dist, total_hyper, total_linked = item
                         for data in ret:
                             #data, n_collected_entity, n_ignored, seq_len = item
                             writer.write(data)
@@ -281,6 +283,9 @@ class WikipediaPretrainingDataset:
                         
                         num_total_entity += n_total_entity
                         num_ignored += n_ignored
+                        num_total_hyper += total_hyper
+                        num_total_linked += total_linked
+                        #print ("total hyper/linked={}/{}".format(num_total_hyper, num_total_linked))
                         for max_len in [32, 64, 128, 256, 512]:
                             len_dist[max_len] += seq_len_dist[max_len]
                         pbar.update()
@@ -288,6 +293,7 @@ class WikipediaPretrainingDataset:
                 len_dist_str = ", ".join([str(max_len)+":"+str(len_dist[max_len]) for max_len in len_dist])
                 logger.info("Total/Ignored entities = {}/{}".format(num_total_entity, num_ignored))
                 logger.info("Example length distribution: {}".format(len_dist_str))
+                logger.info("Total Hyperlinks = {}, Linked mentions = {}".format(num_total_hyper, num_total_linked))
 
 
 
@@ -353,6 +359,8 @@ class WikipediaPretrainingDataset:
             page_id = -1
 
         sentences = []
+        total_hyper = 0
+        total_linked = 0
 
         for paragraph in _dump_db.get_paragraphs(page_title):
 
@@ -382,9 +390,11 @@ class WikipediaPretrainingDataset:
                     elif _include_unk_entities:
                         paragraph_links.append((UNK_TOKEN, link.start, link.end))
             
-            if _use_entity_linker:
+            if _use_entity_linker and paragraph_text.strip():
                 candidate_links = _entity_linker.link_entities_in_text(paragraph_text, _language, page_title, _language)
-                paragraph_links = merge_links(paragraph_links, candidate_links, paragraph_text)
+                paragraph_links, num_hyper, num_linked = merge_links(paragraph_links, candidate_links, paragraph_text)
+                total_hyper += num_hyper
+                total_linked += num_linked
             
             sent_spans = _sentence_splitter.get_sentence_spans(paragraph_text.rstrip())
             for sent_start, sent_end in sent_spans:
@@ -490,25 +500,32 @@ class WikipediaPretrainingDataset:
 
                 words = []
                 links = []
-        return (ret, n_total_entity, n_ignored, len_dist)
+        return (ret, n_total_entity, n_ignored, len_dist, total_hyper, total_linked)
 
 
-def merge_links(paragraph_links, candidate_links, paragraph_text):
+def merge_links(paragraph_links, candidate_links, paragraph_text, debug=False):
     link_starts = {}
     links = []
-    print ("Text:\n{}\nLinks:".format(paragraph_text))
+    if debug:
+        print ("Text:\n{}\nLinks:".format(paragraph_text))
     for entity, start, end in paragraph_links:
         link_starts[start] = (entity, start, end)
         links.append((entity, start, end))
-        print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
-    print ("Cand Links:")
+        if debug:
+            print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
+    num_hyperlink = len(links)
+    if debug:
+        print ("Cand Links:")
     for entity, start, end in candidate_links:
         if start not in link_starts:
             links.append((entity, start, end))
-            print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
+            if debug:
+                print ("{}:{}-{}({})".format(entity, start, end, paragraph_text[start:end]))
         else:
-            print ("{}:{}-{}({}) ignored".format(entity, start, end, paragraph_text[start:end]))
-    return links
+            if debug:
+                print ("{}:{}-{}({}) ignored".format(entity, start, end, paragraph_text[start:end]))
+    num_linked = len(links) - num_hyperlink
+    return links, num_hyperlink, num_linked
 
 # this is a chinese character that will produce ['_', '龘', ...] after tokenized
 # when added before the original text
