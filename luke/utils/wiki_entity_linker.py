@@ -18,11 +18,16 @@ from transformers.models.xlm_roberta.tokenization_xlm_roberta import SPIECE_UNDE
 # from transformers/tokenization_xlm_roberta.py
 def convert_tokens_to_string(tokens):
     """Converts a sequence of tokens (strings for sub-words) in a single string."""
-    out_string = "".join(tokens).replace(SPIECE_UNDERLINE, " ").strip()
+    out_string = "".join(tokens).replace(SPIECE_UNDERLINE, " ")#.strip()
     return out_string
 
 def normalize_mention(text: str) -> str:
     return " ".join(text.split(" ")).strip()
+
+def count_prefix_space(text):
+        for i, j in enumerate(text):
+            if j != ' ':
+                return i
 
 class Mention(NamedTuple):
     entity: Entity
@@ -40,28 +45,63 @@ class WikiEntityLinker(Registrable, metaclass=ABCMeta):
         self.max_mention_length = max_mention_length
         self.tokenizer = tokenizer
 
-    def link_entities_in_tokens(self, tokens: List[Token], token_language: str, title: str, title_language: str, debug = False) -> List[Mention]:
+    def link_entities_in_tokens(self, tokens: List[Token], token_language: str, title: str, title_language: str) -> List[Mention]:
         mention_candidates = self.get_mention_candidates(title, title_language, token_language)
         return self._link_entities([t.text for t in tokens], mention_candidates, language=token_language)
     
-    def link_entities_in_text(self, text: str, token_language: str, title: str, title_language: str) -> List[Mention]:
+    def link_entities_in_text(self, text: str, token_language: str, title: str, title_language: str, debug = False) -> List[Mention]:
         mention_candidates = self.get_mention_candidates(title, title_language, token_language)
         tokens = tokenize(text, self.tokenizer, add_prefix_space=False)
         mentions = self._link_entities(tokens, mention_candidates, language=token_language)
         links = []
         if debug:
             print ("@@@@@@@@@@@\nText:\n{}\nTokens:\n{}\nLinks:\n".format(text, tokens))
-        for entity, start, end in mentions:
-            text_start = len(convert_tokens_to_string(tokens[:start]))
-            if tokens[start].startswith(SPIECE_UNDERLINE):
-                text_start += 1
-            text_end = len(convert_tokens_to_string(tokens[:end]))
-            links.append((entity.title, text_start, text_end))
-            if debug:
-                print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
-                print ("prefix: {}\nsuffix: {}".format(convert_tokens_to_string(tokens[:start]), convert_tokens_to_string(tokens[:end])))
-                print ("text links | {}:{}-{} ({})".format(entity, text_start, text_end, text[text_start:text_end]))
+        if convert_tokens_to_string(tokens) == text:
+            print ("###Regular")
+            for entity, start, end in mentions:
+                text_start = len(convert_tokens_to_string(tokens[:start]))
+                if tokens[start].startswith(SPIECE_UNDERLINE):
+                    text_start += 1
+                text_end = len(convert_tokens_to_string(tokens[:end]))
+                links.append((entity.title, text_start, text_end))
+                if debug:
+                    print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
+                    print ("prefix: {}\nsuffix: {}".format(convert_tokens_to_string(tokens[:start]), convert_tokens_to_string(tokens[:end])))
+                    print ("text links | {}:{}-{} ({})".format(entity, text_start, text_end, text[text_start:text_end]))
+        else:
+            print ("$$$Align")
+            token_id_to_text_id = self.get_token_id_to_text_id(tokens, text)
+            for entity, start, end in mentions:
+                text_start = token_id_to_text_id[start]
+                if tokens[start].startswith(SPIECE_UNDERLINE):
+                    text_start += 1
+                text_end = token_id_to_text_id[end-1] + len(tokens[end].replace(SPIECE_UNDERLINE, " "))
+                links.append((entity.title, text_start, text_end))
+                if debug:
+                    print ("\ntoken links| {}:{}-{} ({})".format(entity, start, end, tokens[start:end]))
+                    print ("prefix: {}\nsuffix: {}".format(convert_tokens_to_string(tokens[:start]), convert_tokens_to_string(tokens[:end])))
+                    print ("text links | {}:{}-{} ({})".format(entity, text_start, text_end, text[text_start:text_end]))
+        
         return links
+    
+    def get_token_id_to_text_id(self, tokens, text):
+        if convert_tokens_to_string(tokens) == text:
+            return 
+        str = ""
+        token_id_to_text_id = {}
+        for token_id, token in enumerate(tokens):
+            num_space_prefix = count_prefix_space(text[len(str):])
+            if num_space_prefix >= 2:
+                token_id_to_text_id[token_id] = len(str) + (num_space_prefix - 1)
+                str += ' ' * (num_space_prefix-1) + token.replace(SPIECE_UNDERLINE, " ")
+            else:
+                token_id_to_text_id[token_id] = len(str)
+                str += token.replace(SPIECE_UNDERLINE, " ")
+        try:
+            assert str == text
+        except:
+            print ("*********\nMismatch:\nText:{}\nCcat:{}\nToks:{}".format(text, str, tokens))
+        return token_id_to_text_id
 
     @abstractmethod
     def get_mention_candidates(self, title: str, title_language: str, token_language: str) -> Dict[str, str]:
