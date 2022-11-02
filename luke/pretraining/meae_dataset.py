@@ -237,7 +237,7 @@ class WikipediaPretrainingDataset:
 
         #tokenizer.save_pretrained(output_dir)
 
-        entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
+        #entity_vocab.save(os.path.join(output_dir, ENTITY_VOCAB_FILE))
         number_of_items = 0
         num_total_entity = 0
         num_ignored = 0
@@ -378,7 +378,8 @@ class WikipediaPretrainingDataset:
                 try:
                     link_title = _dump_db.resolve_redirect(link.title)
                 except:
-                    logger.info("Failed to resolve title: {}, {}".format(link.title, repr(link.title)))
+                    link_title = link.title
+                    #logger.info("Failed to resolve title: {}, {}".format(link.title, repr(link.title)))
                 # remove category links
                 if link_title.startswith("Category:") and link.text.lower().startswith("category:"):
                     paragraph_text = (
