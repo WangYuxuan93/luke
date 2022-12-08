@@ -32,11 +32,12 @@ def reader(file_path, shuffle_buffer_size=100000, num_parallel_reader=64, shuffl
 
 def write(itr, output_dir, num_each_file, left_item_start_idx, num_exp):
     file_names = []
-    options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
+    #options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
     file_id = 0
     tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
     file_names.append(tf_file)
-    writer = tf.io.TFRecordWriter(tf_file, options=options)
+    #writer = tf.io.TFRecordWriter(tf_file, options=options)
+    writer = tf.io.TFRecordWriter(tf_file)
     num_total = 0
     
     with tqdm(total=num_exp) as pbar:
@@ -60,7 +61,8 @@ def write(itr, output_dir, num_each_file, left_item_start_idx, num_exp):
                 file_id += 1
                 tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
                 file_names.append(tf_file)
-                writer = tf.io.TFRecordWriter(tf_file, options=options)
+                #writer = tf.io.TFRecordWriter(tf_file, options=options)
+                writer = tf.io.TFRecordWriter(tf_file)
             pbar.update()
         writer.close()
     print ("Total examples: {}, files: {}".format(num_total, file_id+1))

@@ -65,11 +65,11 @@ _abstract_only = _language = None
 @click.option("--chunk-size", default=100)
 @click.option("--max-num-documents", default=None, type=int)
 @click.option("--predefined-entities-only", is_flag=True)
-@click.option("--mention_candidate")
+@click.option("--mention_candidate", default=None)
 @click.option("--use-entity-linker", is_flag=True)
 def build_wikipedia_pretraining_dataset_for_meae(
         dump_db_file: str, model_path: str, entity_vocab_file: str, output_dir: str, sentence_splitter: str, 
-        examples_per_file: int, mention_candidate: str, **kwargs
+        examples_per_file: int, mention_candidate: str, use_entity_linker: bool, **kwargs
 ):
     dump_db = DumpDB(dump_db_file)
     tokenizer_path = os.path.join(model_path, "sentencepiece.bpe.model")
@@ -81,14 +81,16 @@ def build_wikipedia_pretraining_dataset_for_meae(
 
     entity_vocab = EntityVocab(entity_vocab_file)
 
-    mention_candidate_json_file_paths = json.load(open(mention_candidate, "r"))
-    entity_linker = JsonWikiEntityLinker(
-        tokenizer, 
-        mention_candidate_json_file_paths,
-        entity_vocab,
-        max_mention_length=10,
-        language=dump_db.language,
-    )
+    entity_linker = None
+    if use_entity_linker: 
+        mention_candidate_json_file_paths = json.load(open(mention_candidate, "r"))
+        entity_linker = JsonWikiEntityLinker(
+            tokenizer, 
+            mention_candidate_json_file_paths,
+            entity_vocab,
+            max_mention_length=10,
+            language=dump_db.language,
+        )
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -102,7 +104,8 @@ def build_wikipedia_pretraining_dataset_for_meae(
         entity_vocab, 
         output_dir, 
         examples_per_file=examples_per_file, 
-        entity_linker=entity_linker, 
+        entity_linker=entity_linker,
+        use_entity_linker=use_entity_linker,
         **kwargs
     )
 
@@ -245,12 +248,13 @@ class WikipediaPretrainingDataset:
         num_total_hyper = 0
         num_total_linked = 0
 
-        options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
+        #options = tf.io.TFRecordOptions(tf.compat.v1.io.TFRecordCompressionType.GZIP)
+        options = tf.io.TFRecordOptions(compression_type="ZLIB")
         #file_id = 0
         #tf_file = os.path.join(output_dir, "dataset-"+str(file_id)+".tf")
         tf_file = os.path.join(output_dir, DATASET_FILE)
         #writer = TFRecordWriter(tf_file, options=options)
-        
+        f = open("count.txt", "w")
         with TFRecordWriter(tf_file, options=options) as writer:
             with tqdm(total=len(target_titles)) as pbar:
                 initargs = (
@@ -280,6 +284,9 @@ class WikipediaPretrainingDataset:
                             #data, n_collected_entity, n_ignored, seq_len = item
                             writer.write(data)
                             number_of_items += 1
+                            #print (data)
+                            f.write(str(data))
+                            f.write("\n")
                         
                         num_total_entity += n_total_entity
                         num_ignored += n_ignored
